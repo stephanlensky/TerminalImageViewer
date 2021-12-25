@@ -197,12 +197,14 @@ struct CharData {
   std::array<int, 3> fgColor = std::array<int, 3>{0, 0, 0};
   std::array<int, 3> bgColor = std::array<int, 3>{0, 0, 0};
   int codePoint;
+  bool inverted;
 };
 
 
 // Return a CharData struct with the given code point and corresponding averag fg and bg colors.
-CharData createCharData(const cimg_library::CImg<unsigned char> & image, int x0, int y0, int codepoint, int pattern) {
+CharData createCharData(const cimg_library::CImg<unsigned char> & image, int x0, int y0, int codepoint, int pattern, bool inverted) {
   CharData result;
+  result.inverted = inverted;
   result.codePoint = codepoint;
   int fg_count = 0;
   int bg_count = 0;
@@ -347,6 +349,7 @@ CharData findCharData(const cimg_library::CImg<unsigned char> & image, int x0, i
 
   if (direct) {
     CharData result;
+    result.inverted = inverted;
     if (inverted) {
       long tmp = max_count_color_1;
       max_count_color_1 = max_count_color_2;
@@ -360,7 +363,7 @@ CharData findCharData(const cimg_library::CImg<unsigned char> & image, int x0, i
     }
     return result;
   }
-  return createCharData(image, x0, y0, codepoint, best_pattern);
+  return createCharData(image, x0, y0, codepoint, best_pattern, inverted);
 }
 
 
@@ -450,13 +453,23 @@ void emit_image(const cimg_library::CImg<unsigned char> & image, int flags) {
   for (int y = 0; y <= image.height() - 8; y += 8) {
     for (int x = 0; x <= image.width() - 4; x += 4) {
       CharData charData = flags & FLAG_NOOPT
-        ? createCharData(image, x, y, 0x2584, 0x0000ffff)
+        ? createCharData(image, x, y, 0x2584, 0x0000ffff, false)
         : findCharData(image, x, y, flags);
+      bool bgIsBlack = !charData.inverted && charData.bgColor[0] == 0 && charData.bgColor[1] == 0 && charData.bgColor[2] == 0;
+      bool fgIsBlack = charData.inverted && charData.fgColor[0] == 0 && charData.fgColor[1] == 0 && charData.fgColor[2] == 0;
+      if (bgIsBlack || (fgIsBlack && (int) charData.codePoint != 160)) {
+        std::cout << "\x1b[0m ";
+        lastCharData = charData;
+        continue;
+      }
       if (x == 0 || charData.bgColor != lastCharData.bgColor)
         emit_color(flags | FLAG_BG, charData.bgColor[0], charData.bgColor[1], charData.bgColor[2]);
       if (x == 0 || charData.fgColor != lastCharData.fgColor)
         emit_color(flags | FLAG_FG, charData.fgColor[0], charData.fgColor[1], charData.fgColor[2]);
       emitCodepoint(charData.codePoint);
+      //if (fgIsBlack){
+      //std::cout << charData.bgColor[0] << "," << charData.bgColor[1] << "," << charData.bgColor[2] << "," << charData.fgColor[0] << "," << charData.fgColor[1] << "," << charData.fgColor[2] << (int) charData.codePoint << std::endl;
+      //}
       lastCharData = charData;
     }
     std::cout << "\x1b[0m" << std::endl;
